@@ -100,7 +100,7 @@ static void UpdateTimerPeriod(void)
 int main(void)
 {
     // 1. System clock 40 MHz
-    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL |
+    SysCtlClockSet(SYSCTL_SYSDIV_40 | SYSCTL_USE_PLL |
                    SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN);
     g_ui32Clock = SysCtlClockGet();
 
@@ -164,6 +164,8 @@ int main(void)
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
     IntEnable(INT_TIMER0A);
 
+    
+
     // -----------------------------------------------------------------------
     // GPIOF interrupts — SW1 falling, SW2 rising
     // -----------------------------------------------------------------------
@@ -176,13 +178,51 @@ int main(void)
     // -----------------------------------------------------------------------
     // Timer1A — Exercise 3 32-bit capture, rising edge
     // -----------------------------------------------------------------------
-    TimerConfigure(TIMER1_BASE, TIMER_CFG_A_CAP_TIME_UP);   // 32-bit, NOT split
-    TimerControlEvent(TIMER1_BASE, TIMER_A, TIMER_EVENT_POS_EDGE);
-    TimerLoadSet(TIMER1_BASE, TIMER_A, 0xFFFFFFFF);
-    TimerEnable(TIMER1_BASE, TIMER_A);
-    TimerIntRegister(TIMER1_BASE, TIMER_A, Timer1AIntHandler);
-    TimerIntEnable(TIMER1_BASE, TIMER_CAPA_EVENT);
-    IntEnable(INT_TIMER1A);
+    // TimerConfigure(TIMER1_BASE, TIMER_CFG_A_CAP_TIME_UP);   // 32-bit, NOT split
+    // TimerControlEvent(TIMER1_BASE, TIMER_A, TIMER_EVENT_POS_EDGE);
+    // TimerLoadSet(TIMER1_BASE, TIMER_A, 0xFFFFFFFF);
+    // TimerEnable(TIMER1_BASE, TIMER_A);
+    // TimerIntRegister(TIMER1_BASE, TIMER_A, Timer1AIntHandler);
+    // TimerIntEnable(TIMER1_BASE, TIMER_CAPA_EVENT);
+    // IntEnable(INT_TIMER1A);
+
+    // Enable peripherals for GPIO and Timer1
+SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+
+// Configure PB4 as a timer input (T1CCP0)
+GPIOPinConfigure(GPIO_PB4_T1CCP0);
+GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_4);
+
+// Configure Timer1 as a 32-bit edge-time capture timer (NOT split)
+TimerConfigure(TIMER1_BASE, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_CAP_TIME_UP);
+TimerControlEvent(TIMER1_BASE, TIMER_A, TIMER_EVENT_POS_EDGE);
+TimerLoadSet(TIMER1_BASE, TIMER_A, 0xFFFFFFFF);
+TimerEnable(TIMER1_BASE, TIMER_A);
+
+
+TimerIntRegister(TIMER1_BASE, TIMER_A, Timer1AIntHandler);
+TimerIntEnable(TIMER1_BASE, TIMER_CAPA_EVENT);
+IntEnable(INT_TIMER1A);
+
+
+    //    // Enable peripherals for GPIO and Timer0
+    // SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+    // SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    // // Configure PB6 as a timer input (T0CCP0)
+    // GPIOPinConfigure(GPIO_PB6_T0CCP0);
+    // GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_6);
+    
+    // // Enable peripherals for GPIO and Timer0
+    // SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+    // SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    // // Configure PB6 as a timer input (T0CCP0)
+    // GPIOPinConfigure(GPIO_PB6_T0CCP0);
+    // GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_6);
+    // // Configure Timer0 as a 24-bit periodic timer in edge-time mode
+    // TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_CAP_TIME_UP);
+    // TimerControlEvent(TIMER0_BASE, TIMER_A, TIMER_EVENT_POS_EDGE);
+
 
     // -----------------------------------------------------------------------
     // SysTick — 10 ms display multiplex
@@ -233,27 +273,92 @@ void GPIOPortFIntHandler(void)
 // ===========================================================================
 // Exercise 3 ISRs
 // ===========================================================================
+
+// void Timer0IntHandler(void)
+// {
+//     TimerIntClear(TIMER0_BASE, TIMER_CAPA_EVENT);
+    
+//     Point1 = Point2;
+//     Point2 = TimerValueGet(TIMER0_BASE, TIMER_A);
+
+//     uint32_t diff;
+//     if (Point2 >= Point1)
+//         diff = Point2 - Point1;
+//     else
+//         diff = 0x10000 + Point2 - Point1;   // 16-bit wrap, not 2^24
+
+//     if (diff != 0)
+//         Frequency = g_ui32Clock / diff;
+// }
+
+volatile uint32_t Point1, Point2;
+volatile float Frequency;
+
 void Timer1AIntHandler(void)
 {
     TimerIntClear(TIMER1_BASE, TIMER_CAPA_EVENT);
     uint32_t current = TimerValueGet(TIMER1_BASE, TIMER_A);
 
-    if (g_bFirstCapture) {
-        g_bFirstCapture = false;
-        g_ui32LastCapture = current;
-        return;
+    // if (g_bFirstCapture) {
+    //     g_bFirstCapture = false;
+    //     g_ui32LastCapture = current;
+    //     return;
+    // }
+
+    // uint32_t period = current - g_ui32LastCapture;
+    // g_ui32LastCapture = current;
+    // if (period == 0) return;
+
+    Point1 = Point2;
+    Point2 = TimerValueGet(TIMER1_BASE, TIMER_A);
+
+    uint32_t diff;
+    // if (Point2 >= Point1)
+    //     diff = Point2 - Point1;
+    // else
+    //     diff = 0x10000 + Point2 - Point1;   // 16-bit wrap, not 2^24
+
+    // if (diff != 0)
+    //     Frequency = g_ui32Clock / diff;
+
+    if (Point2>Point1)
+    {
+    Frequency = (float)g_ui32Clock/(Point2 - Point1);
+    }
+    if (Point2<Point1)
+    {
+    Frequency = (float)g_ui32Clock/(16777216 + Point2 - Point1);
     }
 
-    uint32_t period = current - g_ui32LastCapture;
-    g_ui32LastCapture = current;
-    if (period == 0) return;
-
-    uint32_t f10 = (g_ui32Clock * 10U) / period;
+    uint32_t f10 = (Frequency * 10U);
     if (f10 < 5U)  f10 = 5U;
     if (f10 > 95U) f10 = 95U;
     g_ui8FreqInt   = (uint8_t)(f10 / 10U);
     g_ui8FreqTenth = (uint8_t)(f10 % 10U);
 }
+
+
+// void Timer1AIntHandler(void)
+// {
+//     TimerIntClear(TIMER1_BASE, TIMER_CAPA_EVENT);
+//     uint32_t current = TimerValueGet(TIMER1_BASE, TIMER_A);
+
+//     if (g_bFirstCapture) {
+//         g_bFirstCapture = false;
+//         g_ui32LastCapture = current;
+//         return;
+//     }
+
+//     uint32_t period = current - g_ui32LastCapture;
+//     g_ui32LastCapture = current;
+//     if (period == 0) return;
+
+//     uint32_t f10 = (g_ui32Clock * 10U) / period;
+//     if (f10 < 5U)  f10 = 5U;
+//     if (f10 > 95U) f10 = 95U;
+//     g_ui8FreqInt   = (uint8_t)(f10 / 10U);
+//     g_ui8FreqTenth = (uint8_t)(f10 % 10U);
+// }
 
 void SysTickIntHandler(void)
 {
@@ -261,18 +366,17 @@ void SysTickIntHandler(void)
     digit_select(0);                            // all off to avoid ghosting
 
     if (d == 0) {
-        write_segments(SEG_TABLE[g_ui8FreqInt]);   // "X"
+        write_segments(SEG_TABLE[g_ui8FreqInt] | 0x80);   // "X"
         digit_select(1);
     } else if (d == 1) {
-        write_segments(SEG_TABLE[g_ui8FreqTenth] | 0x80);  // ".Y"
+        write_segments(SEG_TABLE[g_ui8FreqTenth]);  // ".Y"
         digit_select(2);
     } else {
-        write_segments(0x00);
+        write_segments(SEG_TABLE[0]);
         digit_select(3);
     }
     d = (d + 1) % 3;
 }
-
 
 
 
